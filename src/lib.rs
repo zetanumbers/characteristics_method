@@ -82,6 +82,10 @@ pub struct Renderer {
     pub l: f64,
     rem_t: f64,
     cur_t: f64,
+    // Visuals
+    u_view: CurveView,
+    u_x_view: CurveView,
+    u_t_view: CurveView,
 }
 
 #[wasm_bindgen]
@@ -94,6 +98,9 @@ impl Renderer {
         bottom_u_t: RealFunction,
         a: f64,
         l: f64,
+        u_view: CurveView,
+        u_x_view: CurveView,
+        u_t_view: CurveView,
     ) -> Renderer {
         let (floor_u, floor_udiff) = Self::generate_floor(bottom_u, bottom_u_t, a, l);
         let mut floor_udiff_buffer = Vec::new();
@@ -108,6 +115,9 @@ impl Renderer {
             floor_udiff_buffer,
             a,
             l,
+            u_view,
+            u_x_view,
+            u_t_view,
         }
     }
 
@@ -183,13 +193,7 @@ impl Renderer {
         }
     }
 
-    pub fn render_canvas(
-        &self,
-        ctx: &web_sys::CanvasRenderingContext2d,
-        u_view: CurveView,
-        u_x_view: CurveView,
-        u_t_view: CurveView,
-    ) -> Result<(), JsValue> {
+    pub fn render_canvas(&self, ctx: &web_sys::CanvasRenderingContext2d) -> Result<(), JsValue> {
         const CANVAS_WIDTH: u32 = 480;
         const CANVAS_HEIGHT: u32 = 480;
 
@@ -222,16 +226,16 @@ impl Renderer {
                 u_t_path.line_to(x_from_idx(i), t_y(p.get().u_t));
             });
 
-        if u_view.visible {
-            ctx.set_stroke_style(&u_view.color);
+        if self.u_view.visible {
+            ctx.set_stroke_style(&self.u_view.color);
             ctx.stroke_with_path(&u_path);
         }
-        if u_x_view.visible {
-            ctx.set_stroke_style(&u_x_view.color);
+        if self.u_x_view.visible {
+            ctx.set_stroke_style(&self.u_x_view.color);
             ctx.stroke_with_path(&u_x_path);
         }
-        if u_t_view.visible {
-            ctx.set_stroke_style(&u_t_view.color);
+        if self.u_t_view.visible {
+            ctx.set_stroke_style(&self.u_t_view.color);
             ctx.stroke_with_path(&u_t_path);
         }
 
@@ -256,6 +260,31 @@ impl Renderer {
     #[wasm_bindgen(setter)]
     pub fn set_right_func(&mut self, func: RealFunction) {
         self.right.func = func;
+    }
+
+    #[wasm_bindgen(setter)]
+    pub fn set_u_visible(&mut self, vis: bool) {
+        self.u_view.visible = vis;
+    }
+    #[wasm_bindgen(setter)]
+    pub fn set_u_color(&mut self, color: JsValue) {
+        self.u_view.color = color;
+    }
+    #[wasm_bindgen(setter)]
+    pub fn set_u_x_visible(&mut self, vis: bool) {
+        self.u_x_view.visible = vis;
+    }
+    #[wasm_bindgen(setter)]
+    pub fn set_u_x_color(&mut self, color: JsValue) {
+        self.u_x_view.color = color;
+    }
+    #[wasm_bindgen(setter)]
+    pub fn set_u_t_visible(&mut self, vis: bool) {
+        self.u_t_view.visible = vis;
+    }
+    #[wasm_bindgen(setter)]
+    pub fn set_u_t_color(&mut self, color: JsValue) {
+        self.u_t_view.color = color;
     }
 
     fn generate_floor(

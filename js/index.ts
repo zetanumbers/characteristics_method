@@ -49,10 +49,10 @@ async function main() {
         ) as [CurveView, CurveView, CurveView];
     };
 
-    const renderer = new Renderer(getSideFunc("left"), getSideFunc("right"), ...getSetParams());
+    const renderer = new Renderer(getSideFunc("left"), getSideFunc("right"), ...getSetParams(), ...getCurveViews());
 
     const canvas_context = (document.getElementById("canvas") as HTMLCanvasElement).getContext("2d");
-    renderer.render_canvas(canvas_context, ...getCurveViews());
+    renderer.render_canvas(canvas_context);
 
     var animFrameReq: number;
     var start: number = null;
@@ -67,7 +67,7 @@ async function main() {
                 start = timestamp;
 
                 renderer.advance(dt / 1000.0);
-                renderer.render_canvas(canvas_context, ...getCurveViews());
+                renderer.render_canvas(canvas_context);
 
                 animFrameReq = requestAnimationFrame(step);
             }
@@ -79,16 +79,19 @@ async function main() {
             cancelAnimationFrame(animFrameReq);
         }
     };
-    curveElems.forEach(elems => elems.forEach(
-        elem => elem.onchange = ev => renderer.render_canvas(canvas_context, ...getCurveViews())
-    ));
+    curveElems[0][0].onchange = ev => renderer.u_visible = curveElems[0][0].checked;
+    curveElems[0][1].onchange = ev => renderer.u_color = curveElems[0][1].value;
+    curveElems[1][0].onchange = ev => renderer.u_t_visible = curveElems[1][0].checked;
+    curveElems[1][1].onchange = ev => renderer.u_t_color = curveElems[1][1].value;
+    curveElems[2][0].onchange = ev => renderer.u_x_visible = curveElems[2][0].checked;
+    curveElems[2][1].onchange = ev => renderer.u_x_color = curveElems[2][1].value;
 
     document.getElementById("set_button").onclick = ev => {
         if (pauseButton.value === "Pause") {
             pauseButton.click();
         }
         renderer.reset(...getSetParams());
-        renderer.render_canvas(canvas_context, ...getCurveViews());
+        renderer.render_canvas(canvas_context);
     };
 
     document.getElementById("left_fn_select").onchange = ev => {
