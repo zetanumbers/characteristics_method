@@ -9,17 +9,17 @@ async function main() {
     );
 
     const pauseButton = document.getElementById("pause_button") as HTMLInputElement;
-    const bottomUxInput = document.getElementById("bottom_u_x_input") as HTMLInputElement;
+    const bottomUInput = document.getElementById("bottom_u_input") as HTMLInputElement;
     const bottomUtInput = document.getElementById("bottom_u_t_input") as HTMLInputElement;
     const aInput = document.getElementById("a_input") as HTMLInputElement;
     const lInput = document.getElementById("l_input") as HTMLInputElement;
 
     // get required params per set button click
     const getSetParams = () => {
-        const bottomUxText = bottomUxInput.value;
+        const bottomUText = bottomUInput.value;
         const bottomUtText = bottomUtInput.value;
         return [
-            eval("x => { return " + bottomUxText + "; }"),
+            eval("x => { return " + bottomUText + "; }"),
             eval("x => { return " + bottomUtText + "; }"),
             parseFloat(aInput.value),
             parseFloat(lInput.value),
@@ -105,7 +105,7 @@ async function main() {
         const text = (ev.target as HTMLInputElement).value;
         renderer.right_func = eval("t => { return " + text + "; }");
     };
-    ["bottom_u_x_input", "bottom_u_t_input", "a_input", "l_input"]
+    ["bottom_u_input", "bottom_u_t_input", "a_input", "l_input"]
         .forEach(id => document.getElementById(id).onkeyup = submit_set);
 }
 

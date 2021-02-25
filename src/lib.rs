@@ -75,8 +75,9 @@ struct UDiffPairPoint {
 pub struct Renderer {
     left: UDiff,
     right: UDiff,
-    floor: Vec<Cell<UDiffPairPoint>>,
-    floor_buffer: Vec<Cell<UDiffPairPoint>>,
+    floor_u: Vec<Cell<f64>>,
+    floor_udiff: Vec<Cell<UDiffPairPoint>>,
+    floor_udiff_buffer: Vec<Cell<UDiffPairPoint>>,
     pub a: f64,
     pub l: f64,
     rem_t: f64,
@@ -89,21 +90,22 @@ impl Renderer {
     pub fn new(
         left: UDiff,
         right: UDiff,
-        bottom_u_x: RealFunction,
+        bottom_u: RealFunction,
         bottom_u_t: RealFunction,
         a: f64,
         l: f64,
     ) -> Renderer {
-        let floor = Self::generate_floor(bottom_u_x, bottom_u_t, a, l);
-        let mut floor_buffer = Vec::new();
-        floor_buffer.resize(floor.len(), Cell::default());
+        let (floor_u, floor_udiff) = Self::generate_floor(bottom_u, bottom_u_t, a, l);
+        let mut floor_udiff_buffer = Vec::new();
+        floor_udiff_buffer.resize(floor_udiff.len(), Cell::default());
         Self {
-            floor_buffer,
             rem_t: 0.0,
             cur_t: 0.0,
             left,
             right,
-            floor,
+            floor_u,
+            floor_udiff,
+            floor_udiff_buffer,
             a,
             l,
         }
@@ -112,8 +114,11 @@ impl Renderer {
     pub fn reset(&mut self, bottom_u_x: RealFunction, bottom_u_t: RealFunction, a: f64, l: f64) {
         self.a = a;
         self.l = l;
-        self.floor = Self::generate_floor(bottom_u_x, bottom_u_t, a, l);
-        self.floor_buffer.resize(self.floor.len(), Cell::default());
+        let (floor_u, floor_udiff) = Self::generate_floor(bottom_u_x, bottom_u_t, a, l);
+        self.floor_u = floor_u;
+        self.floor_udiff = floor_udiff;
+        self.floor_udiff_buffer
+            .resize(self.floor_udiff.len(), Cell::default());
     }
 
     pub fn advance(&mut self, dt: f64) {
@@ -125,7 +130,7 @@ impl Renderer {
     }
 
     fn step_dt(&self) -> f64 {
-        2.0 * self.l / (self.a * (self.floor.len() - 1) as f64)
+        2.0 * self.l / (self.a * (self.floor_udiff.len() - 1) as f64)
     }
 
     fn calc_point(&self, left: UDiffPairPoint, right: UDiffPairPoint) -> UDiffPairPoint {
@@ -190,23 +195,37 @@ impl Renderer {
 
         ctx.clear_rect(0.0, 0.0, CANVAS_WIDTH as f64, CANVAS_HEIGHT as f64);
 
-        let n = self.floor.len();
+        let n = self.floor_udiff.len();
 
         let x_from_idx = |i| CANVAS_WIDTH as f64 * i as f64 / (n - 1) as f64;
         let t_y = |y| CANVAS_HEIGHT as f64 * (0.5 - y / self.l);
 
+        let u_path = web_sys::Path2d::new()?;
         let u_x_path = web_sys::Path2d::new()?;
         let u_t_path = web_sys::Path2d::new()?;
 
-        let init_point = self.floor.first().unwrap();
+        let init_point = self.floor_u.first().unwrap();
+        u_path.move_to(0.0, t_y(init_point.get()));
+
+        let init_point = self.floor_udiff.first().unwrap();
         u_x_path.move_to(0.0, t_y(init_point.get().u_x));
         u_t_path.move_to(0.0, t_y(init_point.get().u_t));
 
-        self.floor.iter().enumerate().skip(1).for_each(|(i, p)| {
-            u_x_path.line_to(x_from_idx(i), t_y(p.get().u_x));
-            u_t_path.line_to(x_from_idx(i), t_y(p.get().u_t));
-        });
+        self.floor_u
+            .iter()
+            .zip(self.floor_udiff.iter())
+            .enumerate()
+            .skip(1)
+            .for_each(|(i, (u, p))| {
+                u_path.line_to(x_from_idx(i), t_y(u.get()));
+                u_x_path.line_to(x_from_idx(i), t_y(p.get().u_x));
+                u_t_path.line_to(x_from_idx(i), t_y(p.get().u_t));
+            });
 
+        if u_view.visible {
+            ctx.set_stroke_style(&u_view.color);
+            ctx.stroke_with_path(&u_path);
+        }
         if u_x_view.visible {
             ctx.set_stroke_style(&u_x_view.color);
             ctx.stroke_with_path(&u_x_path);
@@ -240,22 +259,27 @@ impl Renderer {
     }
 
     fn generate_floor(
-        bottom_u_x: RealFunction,
+        bottom_u: RealFunction,
         bottom_u_t: RealFunction,
         a: f64,
         l: f64,
-    ) -> Vec<Cell<UDiffPairPoint>> {
+    ) -> (Vec<Cell<f64>>, Vec<Cell<UDiffPairPoint>>) {
         let n = calc_tabulation_size(a, l);
+        let h = l / (n - 1) as f64;
+        let bottom_u_x = |x| (bottom_u.call(x + h) - bottom_u.call(x)) / h;
 
         (0..n)
             .map(|i| {
                 let x = i as f64 / (n - 1) as f64 * l;
-                Cell::new(UDiffPairPoint {
-                    u_t: bottom_u_t.call(x),
-                    u_x: bottom_u_x.call(x),
-                })
+                (
+                    Cell::new(bottom_u.call(x)),
+                    Cell::new(UDiffPairPoint {
+                        u_t: bottom_u_t.call(x),
+                        u_x: bottom_u_x(x),
+                    }),
+                )
             })
-            .collect()
+            .unzip()
     }
 }
 
@@ -263,22 +287,39 @@ impl Iterator for Renderer {
     type Item = ();
 
     fn next(&mut self) -> Option<()> {
-        self.cur_t += self.step_dt();
+        let dt = self.step_dt();
+        self.cur_t += dt;
 
-        let n = self.floor.len();
-        debug_assert_eq!(n, self.floor_buffer.len());
+        let Renderer {
+            cur_t,
+            floor_u,
+            floor_udiff,
+            floor_udiff_buffer,
+            ..
+        } = &*self;
 
-        self.floor_buffer[0].replace(self.left_calc_point(self.cur_t, self.floor[1].get()));
-        self.floor_buffer[1..n - 1]
+        let n = floor_udiff.len();
+        debug_assert_eq!(n, floor_udiff_buffer.len());
+
+        // Euler method for tabulation of U
+        floor_u
             .iter()
-            .zip(self.floor.iter().zip(self.floor.iter().skip(2)))
+            .zip(floor_udiff.iter())
+            .for_each(|(u, u_diff)| {
+                u.replace(u.get() + dt * u_diff.get().u_t / 2.0);
+            });
+
+        // Characteristics method
+        floor_udiff_buffer[0].replace(self.left_calc_point(*cur_t, floor_udiff[1].get()));
+        floor_udiff_buffer[1..n - 1]
+            .iter()
+            .zip(floor_udiff.iter().zip(floor_udiff.iter().skip(2)))
             .for_each(|(out_point, (a, b))| {
                 out_point.replace(self.calc_point(a.get(), b.get()));
             });
-        self.floor_buffer[n - 1]
-            .replace(self.right_calc_point(self.cur_t, self.floor[n - 2].get()));
+        floor_udiff_buffer[n - 1].replace(self.right_calc_point(*cur_t, floor_udiff[n - 2].get()));
 
-        mem::swap(&mut self.floor, &mut self.floor_buffer);
+        mem::swap(&mut self.floor_udiff, &mut self.floor_udiff_buffer);
         Some(())
     }
 }
