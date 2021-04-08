@@ -1,3 +1,10 @@
+#![allow(incomplete_features)]
+#![feature(generic_associated_types)]
+
+mod characteristics_method;
+mod common_method;
+mod explicit_method;
+
 use core::{cell::Cell, mem};
 use wasm_bindgen::prelude::*;
 
@@ -7,10 +14,6 @@ static ALLOC: wee_alloc::WeeAlloc = wee_alloc::WeeAlloc::INIT;
 
 const MIN_FRAMERATE: f64 = 60.0;
 const MIN_TABULATION_SIZE: usize = 257;
-
-fn calc_tabulation_size(a: f64, l: f64) -> usize {
-    MIN_TABULATION_SIZE.max((2.0 * l / a * MIN_FRAMERATE + 1.0).ceil() as usize)
-}
 
 #[wasm_bindgen]
 extern "C" {
@@ -45,6 +48,21 @@ impl CurveView {
 }
 
 #[wasm_bindgen]
+pub struct CurveViews {
+    u: CurveView,
+    ut: CurveView,
+    ux: CurveView,
+}
+
+#[wasm_bindgen]
+impl CurveViews {
+    #[wasm_bindgen(constructor)]
+    pub fn new(u: CurveView, ut: CurveView, ux: CurveView) -> Self {
+        Self { u, ut, ux }
+    }
+}
+
+#[wasm_bindgen]
 #[derive(Debug, Clone, Copy)]
 pub enum UDiffType {
     Ut = "Ut",
@@ -65,107 +83,127 @@ impl UDiff {
     }
 }
 
+#[wasm_bindgen]
+pub struct ConstParams {
+    bottom_u: RealFunction,
+    bottom_u_t: RealFunction,
+    a: f64,
+    l: f64,
+}
+
+#[wasm_bindgen]
+impl ConstParams {
+    #[wasm_bindgen(constructor)]
+    pub fn new(bottom_u: RealFunction, bottom_u_t: RealFunction, a: f64, l: f64) -> Self {
+        Self {
+            bottom_u,
+            bottom_u_t,
+            a,
+            l,
+        }
+    }
+}
+
+#[wasm_bindgen]
+pub struct VariableParams {
+    left: UDiff,
+    right: UDiff,
+}
+
+#[wasm_bindgen]
+impl VariableParams {
+    #[wasm_bindgen(constructor)]
+    pub fn new(left: UDiff, right: UDiff) -> Self {
+        Self { left, right }
+    }
+}
+
 #[derive(Default, Debug, Clone, Copy)]
 struct UDiffPairPoint {
-    u_t: f64,
-    u_x: f64,
+    ut: f64,
+    ux: f64,
 }
 
 #[wasm_bindgen]
 pub struct Renderer {
-    left: UDiff,
-    right: UDiff,
+    var_params: VariableParams,
     floor_u: Vec<Cell<f64>>,
     floor_udiff: Vec<Cell<UDiffPairPoint>>,
     floor_udiff_buffer: Vec<Cell<UDiffPairPoint>>,
-    pub a: f64,
-    pub l: f64,
+    const_params: ConstParams,
     rem_t: f64,
     cur_t: f64,
-    // Visuals
-    u_view: CurveView,
-    u_x_view: CurveView,
-    u_t_view: CurveView,
+    views: CurveViews,
 }
 
 #[wasm_bindgen]
 impl Renderer {
     #[wasm_bindgen(constructor)]
     pub fn new(
-        left: UDiff,
-        right: UDiff,
-        bottom_u: RealFunction,
-        bottom_u_t: RealFunction,
-        a: f64,
-        l: f64,
-        u_view: CurveView,
-        u_x_view: CurveView,
-        u_t_view: CurveView,
+        var_params: VariableParams,
+        const_params: ConstParams,
+        views: CurveViews,
     ) -> Renderer {
-        let (floor_u, floor_udiff) = Self::generate_floor(bottom_u, bottom_u_t, a, l);
+        let (floor_u, floor_udiff) = Self::generate_floor(&const_params);
         let mut floor_udiff_buffer = Vec::new();
         floor_udiff_buffer.resize(floor_udiff.len(), Cell::default());
         Self {
             rem_t: 0.0,
             cur_t: 0.0,
-            left,
-            right,
+            var_params,
             floor_u,
             floor_udiff,
             floor_udiff_buffer,
-            a,
-            l,
-            u_view,
-            u_x_view,
-            u_t_view,
+            const_params,
+            views,
         }
     }
 
-    pub fn reset(&mut self, bottom_u_x: RealFunction, bottom_u_t: RealFunction, a: f64, l: f64) {
-        self.a = a;
-        self.l = l;
-        let (floor_u, floor_udiff) = Self::generate_floor(bottom_u_x, bottom_u_t, a, l);
+    pub fn reset(&mut self, const_params: ConstParams) {
+        let (floor_u, floor_udiff) = Self::generate_floor(&const_params);
+        self.const_params = const_params;
         self.floor_u = floor_u;
         self.floor_udiff = floor_udiff;
         self.floor_udiff_buffer
             .resize(self.floor_udiff.len(), Cell::default());
     }
 
-    pub fn advance(&mut self, dt: f64) {
+    pub fn advance(&mut self, mut dt: f64) {
+        dt += self.rem_t;
         let step_dt = self.step_dt();
         self.rem_t = dt % step_dt;
-        if let None = self.nth((dt / step_dt) as _) {
-            unreachable!()
+        for _ in 0..(dt / step_dt) as _ {
+            self.step_forward()
         }
     }
 
     fn step_dt(&self) -> f64 {
-        2.0 * self.l / (self.a * (self.floor_udiff.len() - 1) as f64)
+        2.0 * self.const_params.l / (self.const_params.a * (self.floor_udiff.len() - 1) as f64)
     }
 
     fn calc_point(&self, left: UDiffPairPoint, right: UDiffPairPoint) -> UDiffPairPoint {
-        let a = self.a;
+        let a = self.const_params.a;
         UDiffPairPoint {
-            u_x: (left.u_x - left.u_t / a + right.u_x + right.u_t / a) / 2.0,
-            u_t: (left.u_t - left.u_x * a + right.u_t + right.u_x * a) / 2.0,
+            ux: (left.ux - left.ut / a + right.ux + right.ut / a) / 2.0,
+            ut: (left.ut - left.ux * a + right.ut + right.ux * a) / 2.0,
         }
     }
 
     fn left_calc_point(&self, t: f64, point: UDiffPairPoint) -> UDiffPairPoint {
-        let u_diff = self.left.func.call(t);
-        match self.left.ty {
+        let u_diff = self.var_params.left.func.call(t);
+        match self.var_params.left.ty {
             UDiffType::Ut => {
                 let u_t = u_diff;
                 UDiffPairPoint {
-                    u_x: point.u_x - (u_t - point.u_t) / self.a,
-                    u_t,
+                    ux: point.ux - (u_t - point.ut) / self.const_params.a,
+                    ut: u_t,
                 }
             }
             UDiffType::Ux => {
                 let u_x = u_diff;
                 UDiffPairPoint {
-                    u_t: point.u_t - (u_x - point.u_x) * self.a,
-                    u_x,
+                    ut: point.ut - (u_x - point.ux) * self.const_params.a,
+                    ux: u_x,
                 }
             }
             _ => unreachable!(),
@@ -173,20 +211,20 @@ impl Renderer {
     }
 
     fn right_calc_point(&self, t: f64, point: UDiffPairPoint) -> UDiffPairPoint {
-        let u_diff = self.right.func.call(t);
-        match self.right.ty {
+        let u_diff = self.var_params.right.func.call(t);
+        match self.var_params.right.ty {
             UDiffType::Ut => {
                 let u_t = u_diff;
                 UDiffPairPoint {
-                    u_x: point.u_x + (u_t - point.u_t) / self.a,
-                    u_t,
+                    ux: point.ux + (u_t - point.ut) / self.const_params.a,
+                    ut: u_t,
                 }
             }
             UDiffType::Ux => {
                 let u_x = u_diff;
                 UDiffPairPoint {
-                    u_t: point.u_t + (u_x - point.u_x) * self.a,
-                    u_x,
+                    ut: point.ut + (u_x - point.ux) * self.const_params.a,
+                    ux: u_x,
                 }
             }
             _ => unreachable!(),
@@ -202,7 +240,7 @@ impl Renderer {
         let n = self.floor_udiff.len();
 
         let x_from_idx = |i| CANVAS_WIDTH as f64 * i as f64 / (n - 1) as f64;
-        let t_y = |y| CANVAS_HEIGHT as f64 * (0.5 - y / self.l);
+        let t_y = |y| CANVAS_HEIGHT as f64 * (0.5 - y / self.const_params.l);
 
         let u_path = web_sys::Path2d::new()?;
         let u_x_path = web_sys::Path2d::new()?;
@@ -212,8 +250,8 @@ impl Renderer {
         u_path.move_to(0.0, t_y(init_point.get()));
 
         let init_point = self.floor_udiff.first().unwrap();
-        u_x_path.move_to(0.0, t_y(init_point.get().u_x));
-        u_t_path.move_to(0.0, t_y(init_point.get().u_t));
+        u_x_path.move_to(0.0, t_y(init_point.get().ux));
+        u_t_path.move_to(0.0, t_y(init_point.get().ut));
 
         self.floor_u
             .iter()
@@ -222,20 +260,20 @@ impl Renderer {
             .skip(1)
             .for_each(|(i, (u, p))| {
                 u_path.line_to(x_from_idx(i), t_y(u.get()));
-                u_x_path.line_to(x_from_idx(i), t_y(p.get().u_x));
-                u_t_path.line_to(x_from_idx(i), t_y(p.get().u_t));
+                u_x_path.line_to(x_from_idx(i), t_y(p.get().ux));
+                u_t_path.line_to(x_from_idx(i), t_y(p.get().ut));
             });
 
-        if self.u_view.visible {
-            ctx.set_stroke_style(&self.u_view.color);
+        if self.views.u.visible {
+            ctx.set_stroke_style(&self.views.u.color);
             ctx.stroke_with_path(&u_path);
         }
-        if self.u_x_view.visible {
-            ctx.set_stroke_style(&self.u_x_view.color);
+        if self.views.ux.visible {
+            ctx.set_stroke_style(&self.views.ux.color);
             ctx.stroke_with_path(&u_x_path);
         }
-        if self.u_t_view.visible {
-            ctx.set_stroke_style(&self.u_t_view.color);
+        if self.views.ut.visible {
+            ctx.set_stroke_style(&self.views.ut.color);
             ctx.stroke_with_path(&u_t_path);
         }
 
@@ -243,57 +281,24 @@ impl Renderer {
     }
 
     #[wasm_bindgen(setter)]
-    pub fn set_left_ty(&mut self, ty: UDiffType) {
-        self.left.ty = ty;
+    pub fn set_var_params(&mut self, var_params: VariableParams) {
+        self.var_params = var_params;
     }
 
     #[wasm_bindgen(setter)]
-    pub fn set_right_ty(&mut self, ty: UDiffType) {
-        self.right.ty = ty;
-    }
-
-    #[wasm_bindgen(setter)]
-    pub fn set_left_func(&mut self, func: RealFunction) {
-        self.left.func = func;
-    }
-
-    #[wasm_bindgen(setter)]
-    pub fn set_right_func(&mut self, func: RealFunction) {
-        self.right.func = func;
-    }
-
-    #[wasm_bindgen(setter)]
-    pub fn set_u_visible(&mut self, vis: bool) {
-        self.u_view.visible = vis;
-    }
-    #[wasm_bindgen(setter)]
-    pub fn set_u_color(&mut self, color: JsValue) {
-        self.u_view.color = color;
-    }
-    #[wasm_bindgen(setter)]
-    pub fn set_u_x_visible(&mut self, vis: bool) {
-        self.u_x_view.visible = vis;
-    }
-    #[wasm_bindgen(setter)]
-    pub fn set_u_x_color(&mut self, color: JsValue) {
-        self.u_x_view.color = color;
-    }
-    #[wasm_bindgen(setter)]
-    pub fn set_u_t_visible(&mut self, vis: bool) {
-        self.u_t_view.visible = vis;
-    }
-    #[wasm_bindgen(setter)]
-    pub fn set_u_t_color(&mut self, color: JsValue) {
-        self.u_t_view.color = color;
+    pub fn set_views(&mut self, views: CurveViews) {
+        self.views = views;
     }
 
     fn generate_floor(
-        bottom_u: RealFunction,
-        bottom_u_t: RealFunction,
-        a: f64,
-        l: f64,
+        ConstParams {
+            bottom_u,
+            bottom_u_t,
+            a,
+            l,
+        }: &ConstParams,
     ) -> (Vec<Cell<f64>>, Vec<Cell<UDiffPairPoint>>) {
-        let n = calc_tabulation_size(a, l);
+        let n = calc_tabulation_size(*a, *l);
         let h = l / (n - 1) as f64;
         let bottom_u_x = |x| (bottom_u.call(x + h) - bottom_u.call(x)) / h;
 
@@ -303,19 +308,15 @@ impl Renderer {
                 (
                     Cell::new(bottom_u.call(x)),
                     Cell::new(UDiffPairPoint {
-                        u_t: bottom_u_t.call(x),
-                        u_x: bottom_u_x(x),
+                        ut: bottom_u_t.call(x),
+                        ux: bottom_u_x(x),
                     }),
                 )
             })
             .unzip()
     }
-}
 
-impl Iterator for Renderer {
-    type Item = ();
-
-    fn next(&mut self) -> Option<()> {
+    fn step_forward(&mut self) {
         let dt = self.step_dt();
         self.cur_t += dt;
 
@@ -335,7 +336,7 @@ impl Iterator for Renderer {
             .iter()
             .zip(floor_udiff.iter())
             .for_each(|(u, u_diff)| {
-                u.replace(u.get() + dt * u_diff.get().u_t / 2.0);
+                u.replace(u.get() + dt * u_diff.get().ut / 2.0);
             });
 
         // Characteristics method
@@ -349,7 +350,6 @@ impl Iterator for Renderer {
         floor_udiff_buffer[n - 1].replace(self.right_calc_point(*cur_t, floor_udiff[n - 2].get()));
 
         mem::swap(&mut self.floor_udiff, &mut self.floor_udiff_buffer);
-        Some(())
     }
 }
 
