@@ -1,24 +1,18 @@
-use std::borrow::Cow;
-
 use seed::{prelude::*, *};
 
-mod function_input;
-mod numeric_input;
+mod inputs;
+mod params;
 mod util;
 mod visuals;
 
 struct Model {
     visuals: visuals::Model,
-    test: function_input::Model,
-    test_value: f64,
 }
 
 impl Model {
     fn init(_: Url, _orders: &mut impl Orders<Msg>) -> Model {
         Model {
             visuals: visuals::Model::init(),
-            test: function_input::Model::new(div!("test"), Cow::Borrowed("x")),
-            test_value: 0.0,
         }
     }
 
@@ -29,29 +23,19 @@ impl Model {
                 At::Width => 600,
                 At::Height => 600,
             ]],
-            div![
-                C!["controls"],
-                self.visuals.view().map_msg(Msg::VisualsMsg),
-                self.test.view().map_msg(Msg::TestMsg),
-                self.test_value,
-            ]
+            div![C!["controls"], self.visuals.view().map_msg(Msg::VisualsMsg),]
         ]
     }
 }
 
 enum Msg {
     VisualsMsg(visuals::Msg),
-    TestMsg(function_input::Msg),
 }
 
 impl Msg {
     fn update(self, model: &mut Model, _orders: &mut impl Orders<Msg>) {
         match self {
             Msg::VisualsMsg(msg) => msg.update(&mut model.visuals),
-            Msg::TestMsg(msg) => {
-                msg.update(&mut model.test);
-                model.test_value = model.test.eval_update(13.0).unwrap_or(std::f64::NAN);
-            }
         }
     }
 }

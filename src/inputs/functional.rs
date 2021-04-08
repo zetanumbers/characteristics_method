@@ -27,8 +27,10 @@ impl Model {
 
     pub fn view(&self) -> Node<Msg> {
         div![
+            C!["generic-input"],
             self.label.clone(),
             input![
+                C!["input-field"],
                 attrs![
                     At::Type => "text",
                     At::Value => self.fallback,

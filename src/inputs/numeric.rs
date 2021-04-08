@@ -21,9 +21,10 @@ impl Model {
 
     pub fn view(&self) -> Node<Msg> {
         div![
-            C!["numeric-input"],
+            C!["generic-input"],
             &self.label,
             input![
+                C!["input-field"],
                 attrs![
                     At::Type => "text",
                     At::Value => self.fallback,
