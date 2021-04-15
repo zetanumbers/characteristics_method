@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+  <meta charset="UTF-8">
+  <title>Метод характеристик</title>
+</head>
+
+<body>
+  <table>
+    <tr>
+      <td>
+        <canvas width="600" height="600" id="display"></canvas>
+      </td>
+      <td>
+        <table id="controls">
+          <tr id="left-function">
+            <td>
+              <select style="width: 100%;" disabled>
+                <option value="Ut">Ut(0, t) = </option>
+                <option value="Ux">Ux(0, t) = </option>
+              </select>
+            </td>
+            <td>
+              <input type="text" value="0" disabled>
+            </td>
+          </tr>
+          <tr id="right-function">
+            <td>
+              <select style="width: 100%;" disabled>
+                <option value="Ut">Ut(l, t) = </option>
+                <option value="Ux">Ux(l, t) = </option>
+              </select>
+            </td>
+            <td>
+              <input type="text" value="0" disabled>
+            </td>
+          </tr>
+          <tr>
+            <td colspan="2">
+              <input id="pause-button" type="button" value="Resume" style="width: 100%;" disabled>
+              <hr />
+            </td>
+          </tr>
+          <tr>
+            <td>U(x, 0) = </td>
+            <td>
+              <input id="u_xt0" type="text" value="0" disabled>
+            </td>
+          </tr>
+          <tr>
+            <td>Ut(x, 0) = </td>
+            <td>
+              <input id="ut_xt0" type="text" value="0" disabled>
+            </td>
+          </tr>
+          <tr>
+            <td>a = </td>
+            <td>
+              <input id="a-param" type="number" step="any" value="1" disabled>
+            </td>
+          </tr>
+          <tr>
+            <td>l = </td>
+            <td>
+              <input id="l-param" type="number" step="any" value="1" disabled>
+            </td>
+          </tr>
+          <tr>
+            <td colspan="2">
+              <input id="set-button" type="button" value="Set" style="width: 100%;" disabled>
+              <hr />
+            </td>
+          </tr>
+          <tr id="u-visual">
+            <td>
+              <input type="checkbox" checked disabled />
+              U
+            </td>
+            <td>
+              <input type="color" style="width: 100%;" value="#ff0000" disabled />
+            </td>
+          </tr>
+          <tr id="ut-visual">
+            <td>
+              <input type="checkbox" disabled />
+              Ut
+            </td>
+            <td>
+              <input type="color" style="width: 100%;" value="#00ff00" disabled />
+            </td>
+          </tr>
+          <tr id="ux-visual">
+            <td>
+              <input type="checkbox" disabled />
+              Ux
+            </td>
+            <td>
+              <input type="color" style="width: 100%;" value="#0000ff" disabled />
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+
+</html>
